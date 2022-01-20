@@ -1,3 +1,6 @@
 /*-dump.txt
 /*.so
-/target/
+**/target/
+**/build
+**/node_modules
+**/test-ledger
