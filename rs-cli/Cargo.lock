@@ -2722,6 +2722,7 @@ dependencies = [
  "borsh",
  "bs58",
  "clap",
+ "ed25519-dalek",
  "solana-clap-utils",
  "solana-cli-config",
  "solana-client",

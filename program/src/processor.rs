@@ -38,7 +38,7 @@ pub struct Processor;
 
 impl Processor {
     pub fn process(
-        program_id: &Pubkey,
+        _program_id: &Pubkey,
         accounts: &[AccountInfo],
         instruction_data: &[u8],
     ) -> ProgramResult {
@@ -72,13 +72,12 @@ impl Processor {
         let account_info_iter = &mut accounts.iter();
         let native_verify_account = next_account_info(account_info_iter)?;
         msg!("native_verify_account {:?}", native_verify_account);
-        msg!("got into the sig verify");
         let i = new_ed25519_instruction(&pubkey, &signature, &message, &ed25519_program_id);
         msg!("invoke with instruction");
         msg!("{:?}", &i);
-        invoke(&i, &[native_verify_account.clone()])
-        //msg!("invoke ed25519 native result: {:?}", r);
-        //r
+        // Ok(())
+        invoke(&i, &[])
+        // invoke(&i, &[native_verify_account.clone()])
     }
 }
 

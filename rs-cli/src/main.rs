@@ -2,12 +2,12 @@ use {
     borsh::BorshSerialize,
     // system_instruction::create_account,
     clap::{
-        crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, ArgMatches,
-        SubCommand,
+        crate_description, crate_name, crate_version, value_t, App, AppSettings, Arg, SubCommand,
     },
+    ed25519_dalek::Keypair as DalekKeypair,
     solana_clap_utils::{
         fee_payer::fee_payer_arg,
-        input_parsers::{keypair_of, pubkey_of, value_of},
+        input_parsers::{keypair_of, value_of},
         input_validators::{is_keypair, is_url},
         keypair::signer_from_path,
     },
@@ -18,6 +18,7 @@ use {
     },
     solana_sdk::{
         commitment_config::CommitmentConfig,
+        ed25519_instruction::new_ed25519_instruction,
         signature::{Signature, Signer},
         signer::keypair::Keypair,
         transaction::Transaction,
@@ -95,9 +96,18 @@ fn main() {
                         .takes_value(true)
                         .required(true)
                         .help("Message to Sign"),
+                )
+                .arg(
+                    Arg::with_name("native")
+                        .long("native")
+                        .value_name("BOOL")
+                        .takes_value(true)
+                        .default_value("false")
+                        .help("Directly use native program to verify"),
                 ),
         )
         .get_matches();
+
     let mut wallet_manager = None;
     let config = {
         let cli_config = if let Some(config_file) = matches.value_of("config_file") {
@@ -138,9 +148,10 @@ fn main() {
         ("sign_and_verify", Some(arg_matches)) => {
             let keypair = keypair_of(arg_matches, "keypair").unwrap();
             let msg_str: String = value_of(arg_matches, "msg").unwrap();
+            let native: bool = value_of(arg_matches, "native").unwrap();
             let msg = msg_str.as_bytes();
             let signature = keypair.sign_message(msg);
-            command_verify(&config, keypair, signature, msg)
+            command_verify(&config, keypair, signature, msg, native)
         }
         _ => unreachable!(),
     }
@@ -155,20 +166,29 @@ pub fn command_verify(
     keypair: Keypair,
     signature: Signature,
     message: &[u8],
+    native: bool,
 ) -> CommandResult {
     let ed25519_program_id = Pubkey::new(&bs58::decode(ED25519_PROGRAM_ID).into_vec().unwrap());
     let native_verify_account = AccountMeta::new_readonly(ed25519_program_id, false);
-    let ix = Instruction {
-        program_id: config.solayer_program_id,
-        accounts: vec![native_verify_account],
-        data: SolayerInstruction::SigVerify {
-            pubkey: keypair.pubkey(),
-            signature: signature.as_ref().to_vec(),
-            message: message.to_vec(),
-            ed25519_program_id,
+
+    let instruction = if native {
+        let dalek_keypair = DalekKeypair::from_bytes(&keypair.to_bytes());
+        new_ed25519_instruction(&dalek_keypair?, message)
+    } else {
+        Instruction {
+            program_id: config.solayer_program_id,
+            accounts: vec![native_verify_account],
+            data: SolayerInstruction::SigVerify {
+                pubkey: keypair.pubkey(),
+                signature: signature.as_ref().to_vec(),
+                message: message.to_vec(),
+                ed25519_program_id,
+            }
+            .try_to_vec()?,
         }
-        .try_to_vec()?,
     };
+
+    println!("Instructions: {:?}", instruction);
 
     let signers: Vec<&dyn Signer> = vec![&keypair];
     let latest_blockhash = config
@@ -177,7 +197,7 @@ pub fn command_verify(
         .expect("failed to fetch latest blockhash");
 
     let transaction = Transaction::new_signed_with_payer(
-        &[ix],
+        &[instruction],
         Some(&config.fee_payer.pubkey()),
         &signers,
         latest_blockhash,
