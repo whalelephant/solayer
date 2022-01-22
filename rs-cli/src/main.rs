@@ -12,7 +12,10 @@ use {
         keypair::signer_from_path,
     },
     solana_client::rpc_client::RpcClient,
-    solana_program::{instruction::Instruction, pubkey::Pubkey},
+    solana_program::{
+        instruction::{AccountMeta, Instruction},
+        pubkey::Pubkey,
+    },
     solana_sdk::{
         commitment_config::CommitmentConfig,
         signature::{Signature, Signer},
@@ -25,6 +28,7 @@ use {
 
 // Unsure where this comes from
 const SOLAYER_PROGRAM_ID: &str = "9QLhBMthk61wQsrUdG1TpFwx8dykpopAc6xkaRJX7yjQ";
+const ED25519_PROGRAM_ID: &str = "Ed25519SigVerify111111111111111111111111111";
 
 type Error = Box<dyn std::error::Error>;
 type CommandResult = Result<(), Error>;
@@ -117,8 +121,11 @@ fn main() {
             exit(1);
         });
 
-        let solayer_program_id =
-            Pubkey::new(matches.value_of("solayer_program_id").unwrap().as_bytes());
+        let solayer_program_id = Pubkey::new(
+            &bs58::decode(matches.value_of("solayer_program_id").unwrap())
+                .into_vec()
+                .unwrap(),
+        );
 
         Config {
             rpc_client: RpcClient::new_with_commitment(json_rpc_url, CommitmentConfig::confirmed()),
@@ -149,18 +156,32 @@ pub fn command_verify(
     signature: Signature,
     message: &[u8],
 ) -> CommandResult {
+    let ed25519_program_id = Pubkey::new(&bs58::decode(ED25519_PROGRAM_ID).into_vec().unwrap());
+    let native_verify_account = AccountMeta::new_readonly(ed25519_program_id, false);
     let ix = Instruction {
         program_id: config.solayer_program_id,
-        accounts: vec![],
+        accounts: vec![native_verify_account],
         data: SolayerInstruction::SigVerify {
             pubkey: keypair.pubkey(),
             signature: signature.as_ref().to_vec(),
             message: message.to_vec(),
+            ed25519_program_id,
         }
         .try_to_vec()?,
     };
 
-    let transaction = Transaction::new_with_payer(&[ix], Some(&config.fee_payer.pubkey()));
+    let signers: Vec<&dyn Signer> = vec![&keypair];
+    let latest_blockhash = config
+        .rpc_client
+        .get_latest_blockhash()
+        .expect("failed to fetch latest blockhash");
+
+    let transaction = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&config.fee_payer.pubkey()),
+        &signers,
+        latest_blockhash,
+    );
 
     send_transaction(config, transaction)?;
     Ok(())

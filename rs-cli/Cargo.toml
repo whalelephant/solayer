@@ -5,14 +5,15 @@ edition = "2021"
 
 [dependencies]
 clap = "2.33.3"
-solana-clap-utils = "1.9.2"
-solana-cli-config = "1.9.2"
-solana-client = "1.9.2"
-solana-logger = "1.9.2"
+solana-clap-utils = "1.9.4"
+solana-cli-config = "1.9.4"
+solana-client = "1.9.4"
+solana-logger = "1.9.4"
 solana-sdk = "1.9.4"
 solana-program = "1.9.4"
 solayer = {path = "../program"} 
 borsh = "0.9.1"
+bs58 = "0.4.0"
 
 [[bin]]
 name = "solayer-cli"

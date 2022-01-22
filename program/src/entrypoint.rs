@@ -1,7 +1,7 @@
 use {
     crate::processor::Processor,
     solana_program::{
-        account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, pubkey::Pubkey,
+        account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey,
     },
 };
 
@@ -11,5 +11,6 @@ fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    msg!("Pre-processing instruction");
     Processor::process(program_id, accounts, instruction_data)
 }

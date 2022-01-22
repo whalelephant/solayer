@@ -2720,6 +2720,7 @@ name = "solayer-rs-cli"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "bs58",
  "clap",
  "solana-clap-utils",
  "solana-cli-config",

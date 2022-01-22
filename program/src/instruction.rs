@@ -9,5 +9,6 @@ pub enum SolayerInstruction {
         pubkey: Pubkey,
         signature: Vec<u8>,
         message: Vec<u8>,
+        ed25519_program_id: Pubkey,
     },
 }
