@@ -173,7 +173,9 @@ pub fn command_verify(
 
     let instruction = if native {
         let dalek_keypair = DalekKeypair::from_bytes(&keypair.to_bytes());
-        new_ed25519_instruction(&dalek_keypair?, message)
+        let i = new_ed25519_instruction(&dalek_keypair?, message);
+        println!("Direct Instruction for native program:\n {:?}", i);
+        i
     } else {
         Instruction {
             program_id: config.solayer_program_id,
@@ -187,8 +189,6 @@ pub fn command_verify(
             .try_to_vec()?,
         }
     };
-
-    println!("Instructions: {:?}", instruction);
 
     let signers: Vec<&dyn Signer> = vec![&keypair];
     let latest_blockhash = config

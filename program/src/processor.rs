@@ -7,7 +7,7 @@ use {
         entrypoint::ProgramResult,
         instruction::{AccountMeta, Instruction},
         msg,
-        program::invoke,
+        program::{invoke, invoke_signed},
         program_error::ProgramError,
         pubkey::Pubkey,
         sysvar::{rent::Rent, Sysvar},
@@ -38,13 +38,11 @@ pub struct Processor;
 
 impl Processor {
     pub fn process(
-        _program_id: &Pubkey,
+        program_id: &Pubkey,
         accounts: &[AccountInfo],
         instruction_data: &[u8],
     ) -> ProgramResult {
-        msg!("before instruction from slice");
         let instruction = SolayerInstruction::try_from_slice(instruction_data)?;
-        msg!("instruction from slice successful {:?}", instruction);
         match instruction {
             SolayerInstruction::SigVerify {
                 pubkey,
@@ -52,32 +50,44 @@ impl Processor {
                 message,
                 ed25519_program_id,
             } => {
-                msg!("Matched! Instruction: SigVerify");
                 assert_eq!(signature.len(), SIGNATURE_SERIALIZED_SIZE);
-                msg!("sign len correct");
-                msg!("accounts: {:?} ", accounts);
-                Self::process_sig_verify(accounts, pubkey, signature, message, ed25519_program_id)
+                Self::process_sig_verify(
+                    program_id,
+                    accounts,
+                    pubkey,
+                    signature,
+                    message,
+                    ed25519_program_id,
+                )
             }
         }
     }
 
     fn process_sig_verify(
+        program_id: &Pubkey,
         accounts: &[AccountInfo],
         pubkey: Pubkey,
         signature: Vec<u8>,
         message: Vec<u8>,
         ed25519_program_id: Pubkey,
     ) -> ProgramResult {
-        msg!("accounts: {:?} ", accounts);
         let account_info_iter = &mut accounts.iter();
         let native_verify_account = next_account_info(account_info_iter)?;
-        msg!("native_verify_account {:?}", native_verify_account);
         let i = new_ed25519_instruction(&pubkey, &signature, &message, &ed25519_program_id);
-        msg!("invoke with instruction");
-        msg!("{:?}", &i);
-        // Ok(())
-        invoke(&i, &[])
-        // invoke(&i, &[native_verify_account.clone()])
+        msg!("Instruction from solayer to native program:\n {:?}", i);
+
+        // invoke(
+        //     &i,
+        //     &[native_verify_account.clone()],
+        // )
+
+        // For invoke_signed
+        let (_pda, nonce) = Pubkey::find_program_address(&[b"solayer"], program_id);
+        invoke_signed(
+            &i,
+            &[native_verify_account.clone()],
+            &[&[&b"solayer"[..], &[nonce]]],
+        )
     }
 }
 
@@ -88,7 +98,6 @@ pub fn new_ed25519_instruction(
     message: &[u8],
     ed25519_program_id: &Pubkey,
 ) -> Instruction {
-    msg!("creating instruction");
     assert_eq!(pubkey.to_bytes().len(), PUBKEY_SERIALIZED_SIZE);
     assert_eq!(signature.len(), SIGNATURE_SERIALIZED_SIZE);
     let mut instruction_data = Vec::with_capacity(
@@ -129,8 +138,6 @@ pub fn new_ed25519_instruction(
     debug_assert_eq!(instruction_data.len(), message_data_offset);
 
     instruction_data.extend_from_slice(message);
-
-    msg!("instruction_data len: {}", instruction_data.len());
 
     Instruction {
         program_id: *ed25519_program_id,
