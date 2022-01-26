@@ -19,17 +19,18 @@ use {
     solana_sdk::{
         commitment_config::CommitmentConfig,
         ed25519_instruction::new_ed25519_instruction,
+        message::Message,
         signature::{Signature, Signer},
         signer::keypair::Keypair,
         transaction::Transaction,
     },
     solayer::instruction::SolayerInstruction,
     std::process::exit,
+    std::str::FromStr,
 };
 
 // Unsure where this comes from
 const SOLAYER_PROGRAM_ID: &str = "9QLhBMthk61wQsrUdG1TpFwx8dykpopAc6xkaRJX7yjQ";
-const ED25519_PROGRAM_ID: &str = "Ed25519SigVerify111111111111111111111111111";
 
 type Error = Box<dyn std::error::Error>;
 type CommandResult = Result<(), Error>;
@@ -41,6 +42,8 @@ pub struct Config {
 }
 
 fn main() {
+    solana_logger::setup_with("solana=debug");
+
     let matches = App::new(crate_name!())
         .about(crate_description!())
         .version(crate_version!())
@@ -106,6 +109,19 @@ fn main() {
                         .help("Directly use native program to verify"),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("verify_proof")
+                .about("Call native Aleo Proof Verifier program")
+                .arg(
+                    Arg::with_name("keypair")
+                        .long("keypair")
+                        .validator(is_keypair)
+                        .value_name("KEYPAIR")
+                        .takes_value(true)
+                        .required(true)
+                        .help("Signer keypair path"),
+                ),
+        )
         .get_matches();
 
     let mut wallet_manager = None;
@@ -153,6 +169,10 @@ fn main() {
             let signature = keypair.sign_message(msg);
             command_verify(&config, keypair, signature, msg, native)
         }
+        ("verify_proof", Some(arg_matches)) => {
+            let keypair = keypair_of(arg_matches, "keypair").unwrap();
+            command_verify_proof(&config, &keypair)
+        }
         _ => unreachable!(),
     }
     .map_err(|err| {
@@ -168,7 +188,7 @@ pub fn command_verify(
     message: &[u8],
     native: bool,
 ) -> CommandResult {
-    let ed25519_program_id = Pubkey::new(&bs58::decode(ED25519_PROGRAM_ID).into_vec().unwrap());
+    let ed25519_program_id = solana_sdk::ed25519_program::id();
     let native_verify_account = AccountMeta::new_readonly(ed25519_program_id, false);
 
     let instruction = if native {
@@ -207,13 +227,38 @@ pub fn command_verify(
     Ok(())
 }
 
+pub fn command_verify_proof(config: &Config, keypair: &Keypair) -> CommandResult {
+    let program_id = Pubkey::from_str("A1eoProof1111111111111111111111111111111111")
+        .expect("failed to set program_id");
+
+    let dest_pubkey = Pubkey::create_with_seed(&keypair.pubkey(), "my fuzzy seed", &program_id)?;
+    let instruction = Instruction::new_with_bytes(
+        program_id,
+        &[],
+        vec![
+            AccountMeta::new(keypair.pubkey(), true),
+            AccountMeta::new(dest_pubkey, false),
+        ],
+    );
+
+    let latest_blockhash = config
+        .rpc_client
+        .get_latest_blockhash()
+        .expect("failed to fetch latest blockhash");
+
+    let message = Message::new(&[instruction], Some(&keypair.pubkey()));
+    let transaction = Transaction::new(&[keypair], message, latest_blockhash);
+
+    send_transaction(config, transaction)?;
+    Ok(())
+}
+
 fn send_transaction(
     config: &Config,
     transaction: Transaction,
 ) -> solana_client::client_error::Result<()> {
-    let signature = config
-        .rpc_client
-        .send_and_confirm_transaction_with_spinner(&transaction)?;
-    println!("Signature: {}", signature);
+    let r = config.rpc_client.send_transaction(&transaction);
+    // .send_and_confirm_transaction_with_spinner(&transaction)?;
+    println!("Result: {:?}", r);
     Ok(())
 }
